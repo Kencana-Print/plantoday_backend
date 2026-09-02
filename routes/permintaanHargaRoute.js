@@ -12,6 +12,12 @@ router.get(
     auth,
     controller.getPermintaanHargaStatusCounts,
 );
+
+// --- ROUTES ENGINE KALKULASI SPANDUK & MMT ---
+router.get("/permintaan-harga/kalkulasi/options", auth, controller.getKalkulasiOptions);
+router.post("/permintaan-harga/kalkulasi/spanduk/calculate", auth, controller.calculateSpanduk);
+router.post("/permintaan-harga/kalkulasi/mmt/calculate", auth, controller.calculateMmt);
+
 router.get(
     "/permintaan-harga/:nomor",
     auth,

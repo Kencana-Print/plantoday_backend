@@ -1,4 +1,4 @@
-const fs = require("fs");
+﻿const fs = require("fs");
 const path = require("path");
 const db = require("../config/dbPenawaran");
 const { UPLOAD_DIR } = require("../middleware/uploadPermintaanHarga");
@@ -1505,7 +1505,173 @@ const getPermintaanHargaStatusCounts = async (req, res) => {
     }
 };
 
+
+// --- ENGINE KALKULASI SPANDUK & MMT ---
+
+const getKalkulasiOptions = async (req, res) => {
+    try {
+        const [spandukBahan] = await db.query(
+            `SELECT DISTINCT mhsp_metode AS metode, mhsp_lebar AS lebar, mhsp_jenis_kain AS jenis_kain 
+             FROM tmintaharga_spanduk 
+             ORDER BY mhsp_metode, mhsp_lebar, mhsp_jenis_kain`
+        );
+
+        const [mmtBahan] = await db.query(
+            `SELECT DISTINCT mhm_kategori AS kategori, mhm_bahan_kode AS bahan_kode, mhm_nama_bahan AS nama_bahan, mhm_resolusi_tipe AS resolusi_tipe 
+             FROM tmintaharga_mmt 
+             WHERE mhm_is_netto = 0 
+             ORDER BY mhm_kategori, mhm_bahan_kode`
+        );
+
+        const [toppingBanner] = await db.query(
+            `SELECT mhmt_kode AS kode, mhmt_nama AS nama, mhmt_kategori AS kategori, mhmt_ukuran AS ukuran, mhmt_material AS material, mhmt_harga AS harga 
+             FROM tmintaharga_mmt_tambahan 
+             WHERE mhmt_aktif = 1 
+             ORDER BY mhmt_id`
+        );
+
+        return res.json({
+            success: true,
+            data: {
+                spanduk: spandukBahan,
+                mmt: mmtBahan,
+                topping: toppingBanner,
+            }
+        });
+    } catch (err) {
+        console.error("[PermintaanHarga][Kalkulasi][Options][Error]", err);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+const calculateSpanduk = async (req, res) => {
+    try {
+        const { metode = "MANUAL", lebar = 90, jenisKain = "POLYESTER 50/36", panjang = 0, qty = 0 } = req.body;
+
+        const numPanjang = toNumber(panjang, 0);
+        const numQty = toNumber(qty, 0);
+        const totalMeter = Math.round(numPanjang * numQty * 100) / 100;
+
+        // Ambil semua tier strata untuk metode, lebar, & kain terkait
+        const [allStrata] = await db.query(
+            `SELECT mhsp_id AS id, mhsp_qmin AS qmin, mhsp_qmax AS qmax, mhsp_harga AS harga 
+             FROM tmintaharga_spanduk 
+             WHERE mhsp_metode = ? AND mhsp_lebar = ? AND mhsp_jenis_kain = ? 
+             ORDER BY mhsp_qmin`,
+            [metode, toNumber(lebar, 90), jenisKain]
+        );
+
+        // Cari tier yang cocok
+        let matched = allStrata.find(s => totalMeter >= s.qmin && totalMeter <= s.qmax);
+        if (!matched && allStrata.length > 0) {
+            // Jika melebihi batas maksimal, gunakan tier tertinggi
+            matched = allStrata[allStrata.length - 1];
+        }
+
+        const tarifPerMeter = matched ? matched.harga : 0;
+        const hargaSatuanPcs = Math.round(numPanjang * tarifPerMeter);
+        const totalHarga = Math.round(totalMeter * tarifPerMeter);
+
+        return res.json({
+            success: true,
+            data: {
+                totalMeter,
+                tarifPerMeter,
+                hargaSatuanPcs,
+                totalHarga,
+                strataAktif: matched || null,
+                tabelReferensi: allStrata,
+            }
+        });
+    } catch (err) {
+        console.error("[PermintaanHarga][Kalkulasi][Spanduk][Error]", err);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+const calculateMmt = async (req, res) => {
+    try {
+        const { kategori = "VYNIL", bahanKode = "260", panjang = 0, lebar = 0, qty = 0, toppingKode = "", toppingQty = 0 } = req.body;
+
+        const numPanjang = toNumber(panjang, 0);
+        const numLebar = toNumber(lebar, 0);
+        const numQty = toNumber(qty, 0);
+
+        const luasPerPcs = Math.round(numPanjang * numLebar * 100) / 100;
+        const totalLuas = Math.round(luasPerPcs * numQty * 100) / 100;
+
+        // Ambil semua strata untuk bahan MMT terkait
+        const [allStrata] = await db.query(
+            `SELECT mhm_id AS id, mhm_nama_bahan AS nama_bahan, mhm_qmin AS qmin, mhm_qmax AS qmax, mhm_harga AS harga, mhm_is_netto AS is_netto 
+             FROM tmintaharga_mmt 
+             WHERE mhm_kategori = ? AND mhm_bahan_kode = ? 
+             ORDER BY mhm_is_netto, mhm_qmin`,
+            [kategori, String(bahanKode)]
+        );
+
+        // Cari tier normal (bukan netto) yang cocok berdasarkan total luas
+        const normalStrata = allStrata.filter(s => s.is_netto === 0);
+        let matched = normalStrata.find(s => totalLuas >= s.qmin && totalLuas <= s.qmax);
+        if (!matched && normalStrata.length > 0) {
+            matched = normalStrata[normalStrata.length - 1];
+        }
+
+        const tarifPerM2 = matched ? matched.harga : 0;
+        const biayaCetak = Math.round(totalLuas * tarifPerM2);
+
+        // Hitung Topping Banner jika dipilih
+        let toppingData = null;
+        let totalTopping = 0;
+
+        if (toppingKode) {
+            const [[topRow]] = await db.query(
+                `SELECT mhmt_kode AS kode, mhmt_nama AS nama, mhmt_harga AS harga, mhmt_material AS material, mhmt_ukuran AS ukuran 
+                 FROM tmintaharga_mmt_tambahan 
+                 WHERE mhmt_kode = ? LIMIT 1`,
+                [toppingKode]
+            );
+            if (topRow) {
+                const numTopQty = toNumber(toppingQty, 1);
+                totalTopping = Math.round(topRow.harga * numTopQty);
+                toppingData = {
+                    kode: topRow.kode,
+                    nama: topRow.nama,
+                    material: topRow.material,
+                    ukuran: topRow.ukuran,
+                    hargaSatuan: topRow.harga,
+                    qty: numTopQty,
+                    totalHarga: totalTopping,
+                };
+            }
+        }
+
+        const totalHarga = biayaCetak + totalTopping;
+        const hargaSatuanPcs = numQty > 0 ? Math.round(totalHarga / numQty) : 0;
+
+        return res.json({
+            success: true,
+            data: {
+                luasPerPcs,
+                totalLuas,
+                tarifPerM2,
+                biayaCetak,
+                topping: toppingData,
+                totalHarga,
+                hargaSatuanPcs,
+                strataAktif: matched || null,
+                tabelReferensi: allStrata,
+            }
+        });
+    } catch (err) {
+        console.error("[PermintaanHarga][Kalkulasi][MMT][Error]", err);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+};
+
 module.exports = {
+    getKalkulasiOptions,
+    calculateSpanduk,
+    calculateMmt,
     getPermintaanHargaList,
     getPermintaanHargaDetail,
     createPermintaanHarga,
