@@ -434,22 +434,7 @@ const getTrackingPenawaranStatusCounts = async (req, res) => {
                     SELECT 
                         spk_pen_nomor,
                         spk_pen_id,
-                        GROUP_CONCAT(DISTINCT spk_nomor SEPARATOR ', ') AS spk_nomor,
-                        MAX(spk_nama) AS spk_nama,
-                        MIN(spk_tanggal) AS spk_tanggal,
-                        MAX(spk_dateline) AS spk_dateline,
-                        MAX(spk_divisi) AS spk_divisi,
-                        MAX(spk_perush_kode) AS spk_perush_kode,
-                        MAX(spk_cus_kode) AS spk_cus_kode,
-                        MAX(spk_workshop) AS spk_workshop,
-                        MAX(spk_statuskerja) AS spk_statuskerja,
-                        GROUP_CONCAT(DISTINCT spk_keterangan SEPARATOR '\n') AS spk_keterangan,
-                        MAX(spk_pending) AS spk_pending,
-                        MAX(spk_close) AS spk_close,
-                        MAX(user_create) AS user_create,
-                        MAX(user_modified) AS user_modified,
-                        MAX(date_create) AS date_create,
-                        MAX(date_modified) AS date_modified
+                        GROUP_CONCAT(DISTINCT spk_nomor SEPARATOR ', ') AS spk_nomor
                     FROM tspk
                     WHERE COALESCE(spk_pen_nomor, '') <> ''
                     GROUP BY spk_pen_nomor, spk_pen_id

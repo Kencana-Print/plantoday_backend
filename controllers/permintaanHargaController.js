@@ -222,6 +222,16 @@ const createPermintaanHargaInTransaction = async ({
     actor,
     nomor,
 }) => {
+    const hargaKalkulasi = toNumber(payload.mh_harga_kalkulasi, 0);
+    let initialStatus = "MINTA";
+    if (payload.mh_status) {
+        initialStatus = String(payload.mh_status).trim().toUpperCase();
+    } else if (hargaKalkulasi > 0) {
+        initialStatus = "WAIT"; // Sudah ada kalkulasi -> status WAIT
+    } else {
+        initialStatus = "MINTA"; // Lewati kalkulasi / belum ada kalkulasi -> status MINTA
+    }
+
     await conn.query(
         `
         INSERT INTO tmintaharga (
@@ -230,7 +240,7 @@ const createPermintaanHargaInTransaction = async ({
             mh_panjang, mh_lebar, mh_ukuran, mh_gramasi, mh_finishing,
             mh_ket, mh_status, date_create, user_create,
             mh_harga_kalkulasi, mh_ket_kalkulasi
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BELUM', NOW(), ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)
         `,
         [
             toNumber(payload.mh_divisi, 0),
@@ -251,8 +261,9 @@ const createPermintaanHargaInTransaction = async ({
             String(payload.mh_gramasi || "").trim(),
             String(payload.mh_finishing || "").trim(),
             String(payload.mh_ket || "").trim(),
+            initialStatus,
             actor,
-            toNumber(payload.mh_harga_kalkulasi, 0),
+            hargaKalkulasi,
             String(payload.mh_ket_kalkulasi || "").trim(),
         ],
     );
@@ -1489,7 +1500,9 @@ const getPermintaanHargaStatusCounts = async (req, res) => {
 
         for (const row of rows || []) {
             const statusKey = String(row?.status || "").trim().toUpperCase();
-            statusMap[statusKey] = toNumber(row?.jumlah, 0);
+            if (statusKey in statusMap) {
+                statusMap[statusKey] = toNumber(row?.jumlah, 0);
+            }
         }
 
         return res.json({
@@ -1511,20 +1524,33 @@ const getPermintaanHargaStatusCounts = async (req, res) => {
 const getKalkulasiOptions = async (req, res) => {
     try {
         const [spandukBahan] = await db.query(
-            `SELECT DISTINCT mhsp_metode AS metode, mhsp_lebar AS lebar, mhsp_jenis_kain AS jenis_kain 
+            `SELECT DISTINCT 
+                mhsp_metode AS metode, 
+                mhsp_lebar AS lebar, 
+                mhsp_jenis_kain AS jenis_kain 
              FROM tmintaharga_spanduk 
              ORDER BY mhsp_metode, mhsp_lebar, mhsp_jenis_kain`
         );
 
         const [mmtBahan] = await db.query(
-            `SELECT DISTINCT mhm_kategori AS kategori, mhm_bahan_kode AS bahan_kode, mhm_nama_bahan AS nama_bahan, mhm_resolusi_tipe AS resolusi_tipe 
+            `SELECT DISTINCT 
+                mhm_kategori AS kategori, 
+                mhm_bahan_kode AS bahan_kode, 
+                mhm_nama_bahan AS nama_bahan, 
+                mhm_resolusi_tipe AS resolusi_tipe 
              FROM tmintaharga_mmt 
              WHERE mhm_is_netto = 0 
              ORDER BY mhm_kategori, mhm_bahan_kode`
         );
 
         const [toppingBanner] = await db.query(
-            `SELECT mhmt_kode AS kode, mhmt_nama AS nama, mhmt_kategori AS kategori, mhmt_ukuran AS ukuran, mhmt_material AS material, mhmt_harga AS harga 
+            `SELECT 
+                mhmt_kode AS kode, 
+                mhmt_nama AS nama, 
+                mhmt_kategori AS kategori, 
+                mhmt_ukuran AS ukuran, 
+                mhmt_material AS material, 
+                mhmt_harga AS harga 
              FROM tmintaharga_mmt_tambahan 
              WHERE mhmt_aktif = 1 
              ORDER BY mhmt_id`
@@ -1552,20 +1578,25 @@ const calculateSpanduk = async (req, res) => {
         const numQty = toNumber(qty, 0);
         const totalMeter = Math.round(numPanjang * numQty * 100) / 100;
 
-        // Ambil semua tier strata untuk metode, lebar, & kain terkait
         const [allStrata] = await db.query(
-            `SELECT mhsp_id AS id, mhsp_qmin AS qmin, mhsp_qmax AS qmax, mhsp_harga AS harga 
+            `SELECT 
+                mhsp_id AS id, 
+                mhsp_qmin AS qmin, 
+                mhsp_qmax AS qmax, 
+                mhsp_harga AS harga 
              FROM tmintaharga_spanduk 
              WHERE mhsp_metode = ? AND mhsp_lebar = ? AND mhsp_jenis_kain = ? 
              ORDER BY mhsp_qmin`,
             [metode, toNumber(lebar, 90), jenisKain]
         );
 
-        // Cari tier yang cocok
         let matched = allStrata.find(s => totalMeter >= s.qmin && totalMeter <= s.qmax);
         if (!matched && allStrata.length > 0) {
-            // Jika melebihi batas maksimal, gunakan tier tertinggi
-            matched = allStrata[allStrata.length - 1];
+            if (totalMeter < allStrata[0].qmin) {
+                matched = allStrata[0]; // Jika qty lebih kecil dari minimum strata, gunakan strata awal (harga eceran)
+            } else {
+                matched = allStrata[allStrata.length - 1]; // Jika qty melebihi batas atas, gunakan strata tier tertinggi
+            }
         }
 
         const tarifPerMeter = matched ? matched.harga : 0;
@@ -1600,32 +1631,44 @@ const calculateMmt = async (req, res) => {
         const luasPerPcs = Math.round(numPanjang * numLebar * 100) / 100;
         const totalLuas = Math.round(luasPerPcs * numQty * 100) / 100;
 
-        // Ambil semua strata untuk bahan MMT terkait
         const [allStrata] = await db.query(
-            `SELECT mhm_id AS id, mhm_nama_bahan AS nama_bahan, mhm_qmin AS qmin, mhm_qmax AS qmax, mhm_harga AS harga, mhm_is_netto AS is_netto 
+            `SELECT 
+                mhm_id AS id, 
+                mhm_nama_bahan AS nama_bahan, 
+                mhm_qmin AS qmin, 
+                mhm_qmax AS qmax, 
+                mhm_harga AS harga, 
+                mhm_is_netto AS is_netto 
              FROM tmintaharga_mmt 
              WHERE mhm_kategori = ? AND mhm_bahan_kode = ? 
              ORDER BY mhm_is_netto, mhm_qmin`,
             [kategori, String(bahanKode)]
         );
 
-        // Cari tier normal (bukan netto) yang cocok berdasarkan total luas
         const normalStrata = allStrata.filter(s => s.is_netto === 0);
         let matched = normalStrata.find(s => totalLuas >= s.qmin && totalLuas <= s.qmax);
         if (!matched && normalStrata.length > 0) {
-            matched = normalStrata[normalStrata.length - 1];
+            if (totalLuas < normalStrata[0].qmin) {
+                matched = normalStrata[0]; // Jika luas lebih kecil dari minimum strata, gunakan strata awal
+            } else {
+                matched = normalStrata[normalStrata.length - 1];
+            }
         }
 
         const tarifPerM2 = matched ? matched.harga : 0;
         const biayaCetak = Math.round(totalLuas * tarifPerM2);
 
-        // Hitung Topping Banner jika dipilih
         let toppingData = null;
         let totalTopping = 0;
 
         if (toppingKode) {
             const [[topRow]] = await db.query(
-                `SELECT mhmt_kode AS kode, mhmt_nama AS nama, mhmt_harga AS harga, mhmt_material AS material, mhmt_ukuran AS ukuran 
+                `SELECT 
+                    mhmt_kode AS kode, 
+                    mhmt_nama AS nama, 
+                    mhmt_harga AS harga, 
+                    mhmt_material AS material, 
+                    mhmt_ukuran AS ukuran 
                  FROM tmintaharga_mmt_tambahan 
                  WHERE mhmt_kode = ? LIMIT 1`,
                 [toppingKode]
