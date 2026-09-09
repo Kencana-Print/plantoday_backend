@@ -36,6 +36,8 @@ app.use("/api", require("./routes/trackingPenawaranRoute"));
 app.use("/api", require("./routes/trackingMapRoute"));
 app.use("/api", require("./routes/trackingSpkRoute"));
 app.use("/api", require("./routes/permintaanHargaRoute"));
+app.use("/api", require("./routes/potensiRoute"));
+app.use("/lookups", require("./routes/permintaanHargaRoute"));
 
 app.listen(process.env.PORT, "0.0.0.0", () => {
     console.log(`Server PlanToday running in: ${process.env.PORT}`);

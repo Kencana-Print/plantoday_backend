@@ -1,7 +1,4 @@
-const db = require("../config/dbMain");
-
-const KIRIMAN_SELECT_FIELDS =
-    "id, sender, receiver, note, catatan, realisasi, tanggal, tanggal_plan, jam, jam_plan, latitude, longitude, user, foto";
+const kurirService = require("../services/kurirService");
 
 function meta(req, extra = {}) {
     return {
@@ -90,17 +87,6 @@ function canAccessRow(req, row) {
     return owner === actor;
 }
 
-async function findKirimanById(id) {
-    const [rows] = await db.query(
-        `SELECT ${KIRIMAN_SELECT_FIELDS}
-         FROM marketing.tkiriman
-         WHERE id = ? LIMIT 1`,
-        [id],
-    );
-
-    return rows?.[0] || null;
-}
-
 function normalizeStatusToRealisasi(raw) {
     const value = String(raw || "")
         .trim()
@@ -113,38 +99,6 @@ function normalizeStatusToRealisasi(raw) {
     )
         return "N";
     return null;
-}
-
-function mapRealisasiToStatus(raw) {
-    return String(raw || "N").toUpperCase() === "Y" ? "delivered" : "draft";
-}
-
-function mapKirimanRow(row) {
-    return {
-        // kompatibilitas kontrak baru
-        id: row.id,
-        kode_pengiriman: `KRM-${String(row.id).padStart(6, "0")}`,
-        tujuan: row.receiver || "",
-        alamat_tujuan: row.catatan || null,
-        status: mapRealisasiToStatus(row.realisasi),
-        tanggal_kirim: row.tanggal_plan || row.tanggal || null,
-
-        // kompatibilitas acuan Delphi /kiriman
-        sender: row.sender || null,
-        receiver: row.receiver || null,
-        note: row.note || null,
-        catatan: row.catatan || null,
-        realisasi: String(row.realisasi || "N").toUpperCase(),
-        tanggal: row.tanggal || null,
-        tanggal_plan: row.tanggal_plan || null,
-        jam: row.jam || null,
-        jam_plan: row.jam_plan || null,
-        latitude: row.latitude || null,
-        longitude: row.longitude || null,
-        user: row.user || null,
-        foto: row.foto || null,
-        foto_url: row.foto || null,
-    };
 }
 
 function validateCreateUpdatePayload(body) {
@@ -252,56 +206,25 @@ const listPengiriman = async (req, res) => {
         });
     }
 
-    const where = ["1=1"];
-    const params = [];
-
-    if (userFilter) {
-        where.push("`user` = ?");
-        params.push(userFilter);
-    }
-    if (search) {
-        where.push(
-            "(sender LIKE ? OR receiver LIKE ? OR note LIKE ? OR catatan LIKE ?)",
-        );
-        const like = `%${search}%`;
-        params.push(like, like, like, like);
-    }
-    if (realisasiFilter) {
-        where.push("realisasi = ?");
-        params.push(realisasiFilter);
-    }
-
-    const whereSql = `WHERE ${where.join(" AND ")}`;
-    const offset = (page - 1) * limit;
-
     try {
-        const [countRows] = await db.query(
-            `SELECT COUNT(*) AS total_items FROM marketing.tkiriman ${whereSql}`,
-            params,
-        );
-
-        const [rows] = await db.query(
-            `SELECT ${KIRIMAN_SELECT_FIELDS}
-             FROM marketing.tkiriman
-             ${whereSql}
-             ORDER BY IFNULL(tanggal_plan, tanggal) DESC, id DESC
-             LIMIT ? OFFSET ?`,
-            [...params, limit, offset],
-        );
-
-        const totalItems = Number(countRows?.[0]?.total_items || 0);
-        const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+        const result = await kurirService.listPengiriman({
+            userFilter,
+            search,
+            realisasiFilter,
+            page,
+            limit,
+        });
 
         return ok(res, req, {
             message: "Data pengiriman berhasil diambil",
-            data: rows.map(mapKirimanRow),
+            data: result.data,
             extraMeta: {
                 pagination: {
                     page,
                     limit,
-                    total_items: totalItems,
-                    total_pages: totalPages,
-                    has_next: page < totalPages,
+                    total_items: result.totalItems,
+                    total_pages: result.totalPages,
+                    has_next: page < result.totalPages,
                     has_prev: page > 1,
                 },
             },
@@ -382,57 +305,30 @@ async function listByMode(req, res, { mode, title, dateField, orderBy }) {
         });
     }
 
-    const where = ["realisasi = ?"];
-    const params = [realisasi];
-
-    if (userFilter) {
-        where.push("`user` = ?");
-        params.push(userFilter);
-    }
-    if (search) {
-        where.push(
-            "(sender LIKE ? OR receiver LIKE ? OR note LIKE ? OR catatan LIKE ?)",
-        );
-        const like = `%${search}%`;
-        params.push(like, like, like, like);
-    }
-    if (dateWhere) {
-        where.push(`DATE(${dateField}) ${dateWhere}`);
-        params.push(...dateParams);
-    }
-
-    const whereSql = `WHERE ${where.join(" AND ")}`;
-    const offset = (page - 1) * limit;
-
     try {
-        const [countRows] = await db.query(
-            `SELECT COUNT(*) AS total_items FROM marketing.tkiriman ${whereSql}`,
-            params,
-        );
-
-        const [rows] = await db.query(
-            `SELECT ${KIRIMAN_SELECT_FIELDS}
-             FROM marketing.tkiriman
-             ${whereSql}
-             ORDER BY ${orderBy}
-             LIMIT ? OFFSET ?`,
-            [...params, limit, offset],
-        );
-
-        const totalItems = Number(countRows?.[0]?.total_items || 0);
-        const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+        const result = await kurirService.listByMode({
+            realisasi,
+            userFilter,
+            search,
+            dateWhere,
+            dateParams,
+            dateField,
+            orderBy,
+            page,
+            limit,
+        });
 
         return ok(res, req, {
             message: `${title} berhasil diambil`,
-            data: rows.map(mapKirimanRow),
+            data: result.data,
             extraMeta: {
                 mode,
                 pagination: {
                     page,
                     limit,
-                    total_items: totalItems,
-                    total_pages: totalPages,
-                    has_next: page < totalPages,
+                    total_items: result.totalItems,
+                    total_pages: result.totalPages,
+                    has_next: page < result.totalPages,
                     has_prev: page > 1,
                 },
             },
@@ -493,7 +389,7 @@ const getPengirimanById = async (req, res) => {
     }
 
     try {
-        const row = await findKirimanById(id);
+        const row = await kurirService.findKirimanById(id);
 
         if (!row) {
             return fail(res, req, {
@@ -509,7 +405,7 @@ const getPengirimanById = async (req, res) => {
 
         return ok(res, req, {
             message: "Detail pengiriman berhasil diambil",
-            data: mapKirimanRow(row),
+            data: kurirService.mapKirimanRow(row),
         });
     } catch (err) {
         console.error("KURIR DETAIL ERROR:", err);
@@ -531,49 +427,16 @@ const createPengiriman = async (req, res) => {
     const actor = req.user?.nama || null;
     const finalUser = isKurirActor(req) ? actor : payload.user || actor;
 
-    const conn = await db.getConnection();
     try {
-        await conn.beginTransaction();
-
-        const [[{ maxId }]] = await conn.query(
-            "SELECT IFNULL(MAX(id), 0) AS maxId FROM marketing.tkiriman",
-        );
-        const newId = Number(maxId || 0) + 1;
-
-        await conn.query(
-            `INSERT INTO marketing.tkiriman
-             (id, sender, receiver, latitude, longitude, note, catatan, realisasi, tanggal, tanggal_plan, jam, jam_plan, user)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, IFNULL(?, CURDATE()), IFNULL(?, CURDATE()), IFNULL(?, CURTIME()), IFNULL(?, CURTIME()), ?)`,
-            [
-                newId,
-                payload.sender,
-                payload.receiver,
-                payload.latitude,
-                payload.longitude,
-                payload.note,
-                payload.catatan,
-                payload.realisasi,
-                payload.tanggal,
-                payload.tanggal_plan,
-                payload.jam,
-                payload.jam_plan,
-                finalUser,
-            ],
-        );
-
-        await conn.commit();
-        const row = await findKirimanById(newId);
+        const data = await kurirService.createPengiriman({ payload, finalUser });
         return ok(res, req, {
             status: 201,
             message: "Pengiriman berhasil disimpan",
-            data: row ? mapKirimanRow(row) : null,
+            data,
         });
     } catch (err) {
-        await conn.rollback();
         console.error("KURIR CREATE ERROR:", err);
         return fail(res, req);
-    } finally {
-        conn.release();
     }
 };
 
@@ -604,7 +467,7 @@ const updatePengiriman = async (req, res) => {
     const finalUser = isKurirActor(req) ? actor : payload.user || actor;
 
     try {
-        const existing = await findKirimanById(id);
+        const existing = await kurirService.findKirimanById(id);
         if (!existing) {
             return fail(res, req, {
                 status: 404,
@@ -617,34 +480,11 @@ const updatePengiriman = async (req, res) => {
             return forbidden(res, req);
         }
 
-        await db.query(
-            `UPDATE marketing.tkiriman
-             SET sender = ?, receiver = ?, latitude = ?, longitude = ?, note = ?, catatan = ?,
-                 realisasi = ?, tanggal = IFNULL(?, tanggal), tanggal_plan = IFNULL(?, tanggal_plan),
-                 jam = IFNULL(?, jam), jam_plan = IFNULL(?, jam_plan), user = ?
-             WHERE id = ?`,
-            [
-                payload.sender,
-                payload.receiver,
-                payload.latitude,
-                payload.longitude,
-                payload.note,
-                payload.catatan,
-                payload.realisasi,
-                payload.tanggal,
-                payload.tanggal_plan,
-                payload.jam,
-                payload.jam_plan,
-                finalUser,
-                id,
-            ],
-        );
-
-        const row = await findKirimanById(id);
+        const data = await kurirService.updatePengiriman({ id, payload, finalUser });
 
         return ok(res, req, {
             message: "Pengiriman berhasil diperbarui",
-            data: row ? mapKirimanRow(row) : null,
+            data,
         });
     } catch (err) {
         console.error("KURIR UPDATE ERROR:", err);
@@ -702,7 +542,7 @@ const updatePengirimanStatus = async (req, res) => {
     }
 
     try {
-        const existing = await findKirimanById(id);
+        const existing = await kurirService.findKirimanById(id);
         if (!existing) {
             return fail(res, req, {
                 status: 404,
@@ -715,38 +555,19 @@ const updatePengirimanStatus = async (req, res) => {
             return forbidden(res, req);
         }
 
-        if (realisasi === "Y") {
-            await db.query(
-                `UPDATE marketing.tkiriman
-                 SET realisasi = ?,
-                     tanggal = IFNULL(?, CURDATE()),
-                     jam = IFNULL(?, CURTIME()),
-                     latitude = IFNULL(?, latitude),
-                     longitude = IFNULL(?, longitude),
-                     catatan = COALESCE(?, catatan)
-                 WHERE id = ?`,
-                [
-                    realisasi,
-                    tanggal || null,
-                    jam,
-                    latitude,
-                    longitude,
-                    catatan,
-                    id,
-                ],
-            );
-        } else {
-            await db.query(
-                "UPDATE marketing.tkiriman SET realisasi = ? WHERE id = ?",
-                [realisasi, id],
-            );
-        }
-
-        const row = await findKirimanById(id);
+        const data = await kurirService.updateStatus({
+            id,
+            realisasi,
+            tanggal,
+            jam,
+            latitude,
+            longitude,
+            catatan,
+        });
 
         return ok(res, req, {
             message: "Status pengiriman berhasil diperbarui",
-            data: row ? mapKirimanRow(row) : null,
+            data,
         });
     } catch (err) {
         console.error("KURIR UPDATE STATUS ERROR:", err);
@@ -776,7 +597,7 @@ const uploadPengirimanPhoto = async (req, res) => {
     }
 
     try {
-        const existing = await findKirimanById(id);
+        const existing = await kurirService.findKirimanById(id);
         if (!existing) {
             return fail(res, req, {
                 status: 404,
@@ -790,15 +611,11 @@ const uploadPengirimanPhoto = async (req, res) => {
         }
 
         const relativePath = `/uploads/kiriman/${req.file.filename}`;
-        await db.query("UPDATE marketing.tkiriman SET foto = ? WHERE id = ?", [
-            relativePath,
-            id,
-        ]);
+        const data = await kurirService.updatePhoto({ id, relativePath });
 
-        const row = await findKirimanById(id);
         return ok(res, req, {
             message: "Foto pengiriman berhasil disimpan",
-            data: row ? mapKirimanRow(row) : null,
+            data,
         });
     } catch (err) {
         console.error("KURIR UPLOAD PHOTO ERROR:", err);
@@ -820,7 +637,7 @@ const softDeletePengiriman = async (req, res) => {
     }
 
     try {
-        const existing = await findKirimanById(id);
+        const existing = await kurirService.findKirimanById(id);
         if (!existing) {
             return ok(res, req, {
                 message: "Pengiriman berhasil dihapus",
@@ -832,10 +649,10 @@ const softDeletePengiriman = async (req, res) => {
             return forbidden(res, req);
         }
 
-        await db.query("DELETE FROM marketing.tkiriman WHERE id = ?", [id]);
+        const data = await kurirService.deleteById(id);
         return ok(res, req, {
             message: "Pengiriman berhasil dihapus",
-            data: { id, deleted: true },
+            data,
         });
     } catch (err) {
         console.error("KURIR DELETE ERROR:", err);

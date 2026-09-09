@@ -17,6 +17,15 @@ router.get(
 router.get("/permintaan-harga/kalkulasi/options", auth, controller.getKalkulasiOptions);
 router.post("/permintaan-harga/kalkulasi/spanduk/calculate", auth, controller.calculateSpanduk);
 router.post("/permintaan-harga/kalkulasi/mmt/calculate", auth, controller.calculateMmt);
+router.post("/permintaan-harga/kalkulasi/garmen/calculate", auth, controller.calculateGarmen);
+
+// --- LOOKUPS GARMEN DARI MANKSI PENAWARAN ---
+router.get("/lookups/jenis-kain-minta-harga", auth, controller.getJenisKainMintaHarga);
+router.get("/lookups/tambahan", auth, controller.getTambahanOptions);
+router.get("/lookups/cetak", auth, controller.getCetakOptions);
+router.get("/jenis-kain-minta-harga", auth, controller.getJenisKainMintaHarga);
+router.get("/tambahan", auth, controller.getTambahanOptions);
+router.get("/cetak", auth, controller.getCetakOptions);
 
 router.get(
     "/permintaan-harga/:nomor",
