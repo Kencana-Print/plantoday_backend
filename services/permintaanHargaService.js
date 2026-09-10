@@ -2088,22 +2088,9 @@ const calculateGarmen = async ({
     const [kainRows] = await db.query(
         `SELECT * FROM tmintaharga_kain 
          WHERE (mhk_kode = ? OR mhk_kode = '') 
-           AND mhk_jeniskain = ? 
-           AND mhk_warna = ?`,
-        [normKodeModel, normJenisKain, normWarna],
+           AND mhk_jeniskain = ?`,
+        [normKodeModel, normJenisKain],
     );
-
-    if (kainRows.length === 0) {
-        const [fallbackRows] = await db.query(
-            `SELECT * FROM tmintaharga_kain 
-             WHERE (mhk_kode = ? OR mhk_kode = '') 
-               AND mhk_jeniskain = ?`,
-            [normKodeModel, normJenisKain],
-        );
-        if (fallbackRows.length > 0) {
-            kainRows.push(...fallbackRows);
-        }
-    }
 
     let ktg = "COTTON";
     let hargaBahan = 0;
@@ -2114,12 +2101,12 @@ const calculateGarmen = async ({
 
     if (kainRows.length > 0) {
         ktg = (kainRows[0].mhk_ktg || "COTTON").toUpperCase().trim();
-        hargaBahan = toNumber(kainRows[0].mhk_harga, 0);
         allowancePersen = toNumber(
             kainRows[0].mhk_allow,
             ktg === "PE" || ktg === "HYGIT" || ktg === "DRYFIT" ? 5 : 17,
         );
 
+        // Kumpulkan babaran (BODY, LENGAN, RIB) dari seluruh baris model & jenis kain ini
         kainRows.forEach((r) => {
             const komp = (r.mhk_komponen || "").toUpperCase().trim();
             const val = Number(r.mhk_babaran) || 0;
@@ -2128,6 +2115,19 @@ const calculateGarmen = async ({
             else if (komp === "RIB" && val > 0) bRib = val;
             else if (val > 0 && bBody === 0) bBody = val;
         });
+
+        // Ambil harga bahan & allowance yang spesifik sesuai pilihan warna
+        const matchedWarna = kainRows.find(
+            (r) => (r.mhk_warna || "").toUpperCase().trim() === normWarna,
+        );
+        if (matchedWarna) {
+            hargaBahan = toNumber(matchedWarna.mhk_harga, 0);
+            if (matchedWarna.mhk_allow !== undefined && matchedWarna.mhk_allow !== null) {
+                allowancePersen = toNumber(matchedWarna.mhk_allow, allowancePersen);
+            }
+        } else {
+            hargaBahan = toNumber(kainRows[0].mhk_harga, 0);
+        }
     }
 
     if (bBody === 0) {
