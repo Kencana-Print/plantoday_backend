@@ -2163,13 +2163,14 @@ const calculateGarmen = async ({
             );
             if (matchedTam) {
                 let tarifTambahan = 0;
-                if (ktg === "LACOST")
+                const ktgUpper = (ktg || "").toUpperCase().trim();
+                const jkUpper = (normJenisKain || "").toUpperCase().trim();
+                const isLacost = ktgUpper.includes("LACOST") || jkUpper.includes("LACOST") || jkUpper.includes("PIQUE");
+                const isPe = ktgUpper.includes("PE") || ktgUpper.includes("HYGIT") || ktgUpper.includes("DRYFIT") || jkUpper.includes("PE ") || jkUpper.includes("HYGIT") || jkUpper.includes("DRYFIT");
+
+                if (isLacost && matchedTam.mht_lacost !== undefined && matchedTam.mht_lacost !== null)
                     tarifTambahan = toNumber(matchedTam.mht_lacost, 0);
-                else if (
-                    ktg === "PE" ||
-                    ktg === "HYGIT" ||
-                    ktg === "DRYFIT"
-                )
+                else if (isPe && matchedTam.mht_pe !== undefined && matchedTam.mht_pe !== null)
                     tarifTambahan = toNumber(matchedTam.mht_pe, 0);
                 else tarifTambahan = toNumber(matchedTam.mht_cotton, 0);
 
@@ -2315,7 +2316,39 @@ const getJenisKainMintaHarga = async (kode = "KH-0001") => {
     return rows;
 };
 
-const getTambahanOptions = async () => {
+const getTambahanOptions = async ({
+    jenisKain = "",
+    kategori = "",
+    kodeModel = "KH-0001",
+} = {}) => {
+    let resolvedKtg = (kategori || "").toUpperCase().trim();
+    const normJenisKain = (jenisKain || "").trim();
+
+    if (!resolvedKtg && normJenisKain) {
+        const [kainRows] = await db.query(
+            `SELECT mhk_ktg FROM tmintaharga_kain 
+             WHERE mhk_jeniskain = ? 
+             LIMIT 1`,
+            [normJenisKain],
+        );
+        if (kainRows.length > 0 && kainRows[0].mhk_ktg) {
+            resolvedKtg = kainRows[0].mhk_ktg.toUpperCase().trim();
+        }
+    }
+
+    const jkUpper = normJenisKain.toUpperCase();
+    const isLacost =
+        resolvedKtg.includes("LACOST") ||
+        jkUpper.includes("LACOST") ||
+        jkUpper.includes("PIQUE");
+    const isPe =
+        resolvedKtg.includes("PE") ||
+        resolvedKtg.includes("HYGIT") ||
+        resolvedKtg.includes("DRYFIT") ||
+        jkUpper.includes("PE ") ||
+        jkUpper.includes("HYGIT") ||
+        jkUpper.includes("DRYFIT");
+
     const [rows] = await db.query(
         `SELECT 
             mht_ket,
@@ -2328,7 +2361,26 @@ const getTambahanOptions = async () => {
          FROM tmintaharga_tambahan 
          ORDER BY mht_ket`,
     );
-    return rows;
+
+    return rows.map((r) => {
+        let tarif = toNumber(r.mht_cotton, 0);
+        let selectedCategory = "COTTON";
+
+        if (isLacost && r.mht_lacost !== undefined && r.mht_lacost !== null) {
+            tarif = toNumber(r.mht_lacost, 0);
+            selectedCategory = "LACOSTE";
+        } else if (isPe && r.mht_pe !== undefined && r.mht_pe !== null) {
+            tarif = toNumber(r.mht_pe, 0);
+            selectedCategory = "PE";
+        }
+
+        return {
+            ...r,
+            tarif: tarif,
+            biaya: tarif,
+            kategori_terpilih: selectedCategory,
+        };
+    });
 };
 
 const getCetakOptions = async () => {

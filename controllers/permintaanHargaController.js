@@ -381,7 +381,12 @@ const getJenisKainMintaHarga = async (req, res) => {
 
 const getTambahanOptions = async (req, res) => {
     try {
-        const data = await permintaanHargaService.getTambahanOptions();
+        const { jenisKain, kategori, kodeModel } = req.query;
+        const data = await permintaanHargaService.getTambahanOptions({
+            jenisKain,
+            kategori,
+            kodeModel,
+        });
         return res.json({ success: true, data });
     } catch (err) {
         console.error("[PermintaanHarga][Lookup][Tambahan][Error]", err);
