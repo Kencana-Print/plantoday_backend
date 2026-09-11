@@ -8,7 +8,7 @@ const {
 } = require("../utils/kalkulasiGarmenHelper");
 
 describe("Unit Test: Logika Kalkulasi Garmen PlanToday (Murni / Tanpa DB)", () => {
-    describe("1. Pengujian Tangga Tier Margin Kuantitas", () => {
+    describe("1. Pengujian Tangga Tier Margin Kuantitas (Selaras tmintaharga_margin)", () => {
         it("harus memilih Tier 1 (20%) untuk pesanan kecil di bawah 100 pcs", () => {
             const tier = tentukanTierMargin(50);
             expect(tier.tier).toBe(1);
@@ -27,22 +27,22 @@ describe("Unit Test: Logika Kalkulasi Garmen PlanToday (Murni / Tanpa DB)", () =
             expect(tier.persen).toBe(15);
         });
 
-        it("harus memilih Tier 3 (12.5%) untuk rentang 500 - 749 pcs", () => {
+        it("harus memilih Tier 3 (10%) untuk rentang 500 - 749 pcs", () => {
             const tier = tentukanTierMargin(600);
             expect(tier.tier).toBe(3);
-            expect(tier.persen).toBe(12.5);
-        });
-
-        it("harus memilih Tier 4 (10%) untuk rentang 750 - 999 pcs", () => {
-            const tier = tentukanTierMargin(850);
-            expect(tier.tier).toBe(4);
             expect(tier.persen).toBe(10);
         });
 
-        it("harus memilih Tier 5 (7%) untuk pesanan besar >= 1000 pcs", () => {
+        it("harus memilih Tier 4 (7.5%) untuk rentang 750 - 999 pcs", () => {
+            const tier = tentukanTierMargin(850);
+            expect(tier.tier).toBe(4);
+            expect(tier.persen).toBe(7.5);
+        });
+
+        it("harus memilih Tier 5 (2%) untuk pesanan besar >= 1000 pcs", () => {
             const tier = tentukanTierMargin(1500);
             expect(tier.tier).toBe(5);
-            expect(tier.persen).toBe(7);
+            expect(tier.persen).toBe(2);
         });
     });
 
@@ -59,15 +59,15 @@ describe("Unit Test: Logika Kalkulasi Garmen PlanToday (Murni / Tanpa DB)", () =
         });
     });
 
-    describe("3. Pengujian Biaya Konveksi (Jahit)", () => {
-        it("harus menggunakan tarif standar Rp 5.610 untuk katun", () => {
+    describe("3. Pengujian Biaya Konveksi (Jahit) (Selaras tmintaharga_biaya)", () => {
+        it("harus menggunakan tarif standar Rp 5.000 untuk katun/lacost", () => {
             const biaya = hitungBiayaKonveksi({ isSport: false });
-            expect(biaya).toBe(5610);
+            expect(biaya).toBe(5000);
         });
 
-        it("harus menggunakan tarif sport Rp 2.800 untuk bahan jersey/sport", () => {
+        it("harus menggunakan tarif sport Rp 2.000 untuk bahan jersey/sport", () => {
             const biaya = hitungBiayaKonveksi({ isSport: true });
-            expect(biaya).toBe(2800);
+            expect(biaya).toBe(2000);
         });
 
         it("harus mendukung custom biaya jahit jika ditentukan", () => {
@@ -90,28 +90,30 @@ describe("Unit Test: Logika Kalkulasi Garmen PlanToday (Murni / Tanpa DB)", () =
                 allowancePersen: 17,
             });
 
-            expect(bahan.hargaBody).toBeGreaterThan(0);
+            expect(bahan.hargaBody).toBe(27885);
             expect(bahan.hargaLengan).toBe(0); // Kaos oblong lengan menyatu di body
-            expect(bahan.hargaRib).toBeGreaterThan(0);
+            expect(bahan.hargaRib).toBe(1695);
             expect(bahan.allowancePersen).toBe(17);
             expect(bahan.totalBahan).toBeGreaterThan(bahan.totalHargaBahan);
         });
 
-        it("Polo/Raglan (KH-0002) harus menghitung biaya lengan terpisah", () => {
+        it("Kaos 2 Warna (KH-0002) harus menghitung biaya lengan terpisah dari DPP Tua", () => {
             const bahan = hitungKomponenBahan({
                 kodeModel: "KH-0002",
-                hargaBahan: 130000,
-                bBody: 4.2,
-                bLengan: 7,
+                hargaBahan: 115000,
+                hargaBahanLengan: 125000,
+                bBody: 6.5,
+                bLengan: 23,
                 bRib: 70,
                 allowancePersen: 17,
             });
 
-            expect(bahan.hargaBody).toBeGreaterThan(0);
-            expect(bahan.hargaLengan).toBeGreaterThan(0); // Lengan terpisah dihitung
-            expect(bahan.totalHargaBahan).toBeGreaterThan(
-                bahan.hargaBody + bahan.hargaRib,
-            );
+            expect(bahan.hargaBody).toBe(15939);
+            expect(bahan.hargaLengan).toBe(4896); // (125000 / 1.11) / 23
+            expect(bahan.hargaRib).toBe(1501);
+            expect(bahan.totalHargaBahan).toBe(22336);
+            expect(bahan.allowanceRp).toBe(3797);
+            expect(bahan.totalBahan).toBe(26133);
         });
     });
 
@@ -126,46 +128,43 @@ describe("Unit Test: Logika Kalkulasi Garmen PlanToday (Murni / Tanpa DB)", () =
                 allowancePersen: 17,
                 isSport: false,
                 qty: 150,
-                totalTambahanPerPcs: 12000, // Sablon
+                totalTambahanPerPcsManual: 12000, // Sablon
             });
 
-            expect(res.hpp).toBeGreaterThan(25000);
+            expect(res.hpp).toBe(39609); // 34609 + 5000
             expect(res.strataAktif.tier).toBe(1);
             expect(res.strataAktif.persen).toBe(20);
-            expect(res.hargaJualPerPcs).toBe(
-                res.hpp + res.strataAktif.marginRp + 12000,
-            );
-            expect(res.hargaUpPerPcs).toBe(
-                bulatkanHargaUp(res.hargaJualPerPcs),
-            );
+            expect(res.strataAktif.marginRp).toBe(7922);
+            expect(res.hargaJualPerPcs).toBe(39609 + 7922 + 12000);
+            expect(res.hargaUpPerPcs).toBe(bulatkanHargaUp(res.hargaJualPerPcs));
             expect(res.totalHargaOrder).toBe(res.hargaUpPerPcs * 150);
             expect(res.tabelReferensi).toHaveLength(5);
         });
-    });
 
-    it("harus menghitung biaya tambahan (x qty order) dan cetak (x custom qty) secara akurat", () => {
-        const res = kalkulasiGarmenEngine({
-            kodeModel: "KH-0001",
-            hargaBahan: 130000,
-            bBody: 4.2,
-            bLengan: 0,
-            bRib: 70,
-            allowancePersen: 17,
-            isSport: false,
-            qty: 100, // Rencana order 100 pcs
-            tambahanList: [
-                { ket: "KRAH BIASA", tarif: 5000 }, // 5000 x 100 = 500.000 (Rp 5.000/pcs)
-            ],
-            cetakList: [
-                { jenis: "CETAK", ket: "SABLON A3", biaya: 10000, customQty: 50 }, // 10000 x 50 = 500.000 (Rp 5.000/pcs)
-            ],
+        it("harus menghitung biaya tambahan dan cetak secara akurat", () => {
+            const res = kalkulasiGarmenEngine({
+                kodeModel: "KH-0001",
+                hargaBahan: 130000,
+                bBody: 4.2,
+                bLengan: 0,
+                bRib: 70,
+                allowancePersen: 17,
+                isSport: false,
+                qty: 100, // Rencana order 100 pcs
+                tambahanList: [
+                    { ket: "KRAH BIASA", tarif: 5000 },
+                ],
+                cetakList: [
+                    { jenis: "CETAK", ket: "SABLON A3", biaya: 10000 },
+                ],
+            });
+
+            expect(res.tambahan.totalOrder).toBe(500000);
+            expect(res.tambahan.totalPerPcs).toBe(5000);
+            expect(res.cetak.totalOrder).toBe(1000000);
+            expect(res.cetak.totalPerPcs).toBe(10000);
+            // Total tambahan + cetak per pcs = 15.000
+            expect(res.hargaJualPerPcs).toBe(res.hpp + res.strataAktif.marginRp + 15000);
         });
-
-        expect(res.tambahan.totalOrder).toBe(500000);
-        expect(res.tambahan.totalPerPcs).toBe(5000);
-        expect(res.cetak.totalOrder).toBe(500000);
-        expect(res.cetak.totalPerPcs).toBe(5000);
-        // Total tambahan + cetak per pcs = 10.000
-        expect(res.hargaJualPerPcs).toBe(res.hpp + res.strataAktif.marginRp + 10000);
     });
 });
