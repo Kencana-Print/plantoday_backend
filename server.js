@@ -21,6 +21,23 @@ app.use(
     }),
 );
 
+// Static /file-gambar (identik Manksi: mengarah ke mount /mnt/image)
+const IMAGE_MOUNT_DIR =
+    process.env.IMAGE_MOUNT_DIR ||
+    (process.platform === "win32"
+        ? path.join(process.cwd(), "image")
+        : "/mnt/image");
+
+app.use(
+    "/file-gambar",
+    express.static(IMAGE_MOUNT_DIR, {
+        setHeaders: (res) => {
+            res.set("Access-Control-Allow-Origin", "*");
+            res.set("Cross-Origin-Resource-Policy", "cross-origin");
+        },
+    }),
+);
+
 const serveMintaHargaImages = express.static(UPLOAD_DIR, {
     setHeaders: (res) => {
         res.set("Access-Control-Allow-Origin", "*");

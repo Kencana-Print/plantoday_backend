@@ -2,17 +2,19 @@ const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 
-// Path lokal ke folder gambar — folder ini yang di-share via SMB ke Delphi
-// (\\103.94.238.252\image\mintaharga adalah share dari folder lokal ini).
-// Bisa di-override via env IMAGE_UPLOAD_DIR jika lokasi berbeda.
-const DEFAULT_UPLOAD_DIR = path.join(process.cwd(), "image", "mintaharga");
+// Path folder gambar minta harga — sentralisasi sama dengan Manksi (/mnt/image/mintaharga)
+const DEFAULT_UPLOAD_DIR =
+    process.platform === "win32"
+        ? path.join(process.cwd(), "image", "mintaharga")
+        : "/mnt/image/mintaharga";
+
 let UPLOAD_DIR = String(
     process.env.IMAGE_UPLOAD_DIR || DEFAULT_UPLOAD_DIR,
 ).trim();
 
-// Auto-convert Linux /mnt/ path to Windows UNC path if running on Windows
+// Auto-convert Linux /mnt/ path to Windows path if running on Windows
 if (process.platform === "win32" && UPLOAD_DIR.startsWith("/mnt/")) {
-    UPLOAD_DIR = UPLOAD_DIR.replace(/^\/mnt\//, "\\\\103.94.238.252\\").replace(/\//g, "\\");
+    UPLOAD_DIR = path.join(process.cwd(), "image", "mintaharga");
 }
 
 // Buat direktori jika belum ada

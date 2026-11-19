@@ -149,10 +149,7 @@ const resolveImagePublicOrigin = () => {
             process.env.IMAGE_PUBLIC_ORIGIN ||
             "",
     ).trim();
-    return (
-        normalizePublicOrigin(envOrigin) ||
-        normalizePublicOrigin("http://103.94.238.252:8182")
-    );
+    return normalizePublicOrigin(envOrigin);
 };
 
 const buildImageBaseUrl = () => resolveImagePublicOrigin();
@@ -162,8 +159,8 @@ const buildImagePaths = (nomor) => {
         .trim()
         .replace(/[^A-Z0-9.\-_]/gi, "_");
     return {
-        delphi1: `/images/mintaharga/${safeNomor}.jpg`,
-        delphi2: `/images/mintaharga/${safeNomor}-2.jpg`,
+        delphi1: `/file-gambar/mintaharga/${safeNomor}.jpg`,
+        delphi2: `/file-gambar/mintaharga/${safeNomor}-2.jpg`,
         legacy1: `/images/mintaharga/${safeNomor}.jpg`,
         legacy2: `/images/mintaharga/${safeNomor}-2.jpg`,
     };
@@ -1980,6 +1977,7 @@ const getPermintaanHargaDetail = async ({
     row.gambar_2_path = existing2 ? imagePaths.delphi2 : "";
     row.gambar_1_file = existing1 ? existing1.fileName : "";
     row.gambar_2_file = existing2 ? existing2.fileName : "";
+    row.imageUrl = row.gambar_1_url || "";
 
     return row;
 };
@@ -3206,6 +3204,7 @@ const uploadPermintaanHargaImage = async ({ nomor, slot, file, user }) => {
                 slot,
                 file: file.filename,
                 url: withBase(currentPath),
+                imageUrl: withBase(currentPath),
                 legacy_url: withBase(legacyPath),
             },
         },
@@ -3267,6 +3266,7 @@ const uploadPermintaanHargaImageInternal = async ({ nomor, slot, file }) => {
                 destination: file.destination,
                 path: file.path,
                 url: withBase(currentPath),
+                imageUrl: withBase(currentPath),
                 legacy_url: withBase(legacyPath),
             },
         },
@@ -3437,6 +3437,7 @@ const uploadPermintaanHargaImageBase64 = async ({
                 file: fileName,
                 path: targetPath,
                 url: withBase(currentPath),
+                imageUrl: withBase(currentPath),
                 legacy_url: withBase(legacyPath),
             },
         },
