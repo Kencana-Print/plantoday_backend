@@ -21,6 +21,19 @@ app.use(
     }),
 );
 
+const serveMintaHargaImages = express.static(UPLOAD_DIR, {
+    setHeaders: (res) => {
+        res.set("Access-Control-Allow-Origin", "*");
+        res.set("Cross-Origin-Resource-Policy", "cross-origin");
+    },
+});
+
+// Routing gambar spesifik mintaharga langsung ke UPLOAD_DIR
+app.use("/file-gambar/mintaharga", serveMintaHargaImages);
+app.use("/api/file-gambar/mintaharga", serveMintaHargaImages);
+app.use("/image/mintaharga", serveMintaHargaImages);
+app.use("/images/mintaharga", serveMintaHargaImages);
+
 // Static /file-gambar (identik Manksi: mengarah ke mount /mnt/image)
 const IMAGE_MOUNT_DIR =
     process.env.IMAGE_MOUNT_DIR ||
@@ -28,24 +41,15 @@ const IMAGE_MOUNT_DIR =
         ? path.join(process.cwd(), "image")
         : "/mnt/image");
 
-app.use(
-    "/file-gambar",
-    express.static(IMAGE_MOUNT_DIR, {
-        setHeaders: (res) => {
-            res.set("Access-Control-Allow-Origin", "*");
-            res.set("Cross-Origin-Resource-Policy", "cross-origin");
-        },
-    }),
-);
-
-const serveMintaHargaImages = express.static(UPLOAD_DIR, {
+const serveMountImages = express.static(IMAGE_MOUNT_DIR, {
     setHeaders: (res) => {
         res.set("Access-Control-Allow-Origin", "*");
         res.set("Cross-Origin-Resource-Policy", "cross-origin");
     },
 });
-app.use("/image/mintaharga", serveMintaHargaImages);
-app.use("/images/mintaharga", serveMintaHargaImages);
+
+app.use("/file-gambar", serveMountImages);
+app.use("/api/file-gambar", serveMountImages);
 
 app.use(express.json({ limit: "3mb" }));
 app.use(express.urlencoded({ extended: true, limit: "3mb" }));
