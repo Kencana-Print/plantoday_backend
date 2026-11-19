@@ -142,17 +142,21 @@ const normalizePublicOrigin = (origin) => {
     return normalized.replace(/\/+$/, "");
 };
 
-const resolveImagePublicOrigin = () => {
+const resolveImagePublicOrigin = (fallbackOrigin = "") => {
     const envOrigin = String(
         process.env.PUBLIC_IMAGE_READ_ORIGIN ||
             process.env.PUBLIC_IMAGE_ORIGIN ||
             process.env.IMAGE_PUBLIC_ORIGIN ||
             "",
     ).trim();
-    return normalizePublicOrigin(envOrigin);
+    return (
+        normalizePublicOrigin(envOrigin) ||
+        normalizePublicOrigin(fallbackOrigin)
+    );
 };
 
-const buildImageBaseUrl = () => resolveImagePublicOrigin();
+const buildImageBaseUrl = (fallbackOrigin = "") =>
+    resolveImagePublicOrigin(fallbackOrigin);
 
 const buildImagePaths = (nomor) => {
     const safeNomor = String(nomor || "")
@@ -1572,6 +1576,7 @@ const getPermintaanHargaDetail = async ({
     managerRole,
     authSalesKode,
     nomor,
+    reqOrigin = "",
 }) => {
     const whereUserCreate = managerRole
         ? ""
@@ -1964,7 +1969,7 @@ const getPermintaanHargaDetail = async ({
                 : null,
         };
     }
-    const baseUrl = buildImageBaseUrl();
+    const baseUrl = buildImageBaseUrl(reqOrigin);
     const imagePaths = buildImagePaths(row.mh_nomor);
     const withBase = (p) => (baseUrl ? `${baseUrl}${p}` : p);
 
@@ -3120,7 +3125,13 @@ const createPermintaanHargaCustomer = async ({ body, user }) => {
     }
 };
 
-const uploadPermintaanHargaImage = async ({ nomor, slot, file, user }) => {
+const uploadPermintaanHargaImage = async ({
+    nomor,
+    slot,
+    file,
+    user,
+    reqOrigin = "",
+}) => {
     if (!["1", "2"].includes(slot)) {
         return {
             status: 400,
@@ -3186,7 +3197,7 @@ const uploadPermintaanHargaImage = async ({ nomor, slot, file, user }) => {
         await ensureImageUnder500KB(file.path);
     }
 
-    const baseUrl = buildImageBaseUrl();
+    const baseUrl = buildImageBaseUrl(reqOrigin);
     const imagePaths = buildImagePaths(nomor);
     const currentPath =
         String(slot) === "2" ? imagePaths.delphi2 : imagePaths.delphi1;
@@ -3211,7 +3222,12 @@ const uploadPermintaanHargaImage = async ({ nomor, slot, file, user }) => {
     };
 };
 
-const uploadPermintaanHargaImageInternal = async ({ nomor, slot, file }) => {
+const uploadPermintaanHargaImageInternal = async ({
+    nomor,
+    slot,
+    file,
+    reqOrigin = "",
+}) => {
     if (!nomor) {
         return {
             status: 400,
@@ -3246,7 +3262,7 @@ const uploadPermintaanHargaImageInternal = async ({ nomor, slot, file }) => {
         await ensureImageUnder500KB(file.path);
     }
 
-    const baseUrl = buildImageBaseUrl();
+    const baseUrl = buildImageBaseUrl(reqOrigin);
     const imagePaths = buildImagePaths(nomor);
     const currentPath =
         String(slot) === "2" ? imagePaths.delphi2 : imagePaths.delphi1;
@@ -3278,6 +3294,7 @@ const uploadPermintaanHargaImageBase64 = async ({
     slot,
     dataUrl,
     user,
+    reqOrigin = "",
 }) => {
     if (!["1", "2"].includes(slot)) {
         return {
@@ -3418,7 +3435,7 @@ const uploadPermintaanHargaImageBase64 = async ({
     await fs.promises.writeFile(targetPath, buffer);
     await ensureImageUnder500KB(targetPath);
 
-    const baseUrl = buildImageBaseUrl();
+    const baseUrl = buildImageBaseUrl(reqOrigin);
     const imagePaths = buildImagePaths(nomor);
     const currentPath =
         String(slot) === "2" ? imagePaths.delphi2 : imagePaths.delphi1;

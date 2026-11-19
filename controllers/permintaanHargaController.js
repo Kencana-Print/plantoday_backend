@@ -61,6 +61,13 @@ const getPermintaanHargaList = async (req, res) => {
     }
 };
 
+const getReqOrigin = (req) => {
+    if (!req) return "";
+    const proto = req.headers["x-forwarded-proto"] || req.protocol || "http";
+    const host = req.headers["x-forwarded-host"] || req.get("host") || "";
+    return host ? `${proto}://${host}` : "";
+};
+
 const getPermintaanHargaDetail = async (req, res) => {
     try {
         const nomor = String(req.params.nomor || "").trim();
@@ -84,6 +91,7 @@ const getPermintaanHargaDetail = async (req, res) => {
             managerRole,
             authSalesKode,
             nomor,
+            reqOrigin: getReqOrigin(req),
         });
 
         if (!row) {
@@ -188,6 +196,7 @@ const uploadPermintaanHargaImage = async (req, res) => {
             slot,
             file: req.file,
             user: req.user || {},
+            reqOrigin: getReqOrigin(req),
         });
         return res.status(result.status).json(result.body);
     } catch (err) {
@@ -207,6 +216,7 @@ const uploadPermintaanHargaImageInternal = async (req, res) => {
                 nomor,
                 slot,
                 file: req.file,
+                reqOrigin: getReqOrigin(req),
             });
         return res.status(result.status).json(result.body);
     } catch (err) {
@@ -229,6 +239,7 @@ const uploadPermintaanHargaImageBase64 = async (req, res) => {
                 slot,
                 dataUrl,
                 user: req.user || {},
+                reqOrigin: getReqOrigin(req),
             });
         return res.status(result.status).json(result.body);
     } catch (err) {
