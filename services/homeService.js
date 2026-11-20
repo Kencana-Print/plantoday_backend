@@ -1,3 +1,4 @@
+const fs = require("fs");
 const db = require("../config/dbMain");
 const {
     canonicalSalesName,
@@ -5,6 +6,7 @@ const {
 } = require("../utils/salesIdentityResolver");
 const { ensureImageUnder500KB } = require("../utils/imageOptimizer");
 const { findSimilarCustomers } = require("../utils/customerNameHelper");
+const { uploadToS3 } = require("../utils/s3Helper");
 
 // Bangun klausa IN untuk mencocokkan user/karyawan ke semua alias nama sales.
 const salesNameInClause = (user, col) => {
@@ -841,25 +843,54 @@ const uploadVisitPhoto = async ({ id, file }) => {
             },
         };
 
-    // Pastikan ukuran foto maksimal 500 KB sebelum disimpan permanen
-    if (file.path) {
-        await ensureImageUnder500KB(file.path);
+    try {
+        // Pastikan ukuran foto maksimal 500 KB sebelum diunggah
+        if (file.path) {
+            await ensureImageUnder500KB(file.path);
+        }
+
+        const buffer =
+            file.buffer ||
+            (file.path ? await fs.promises.readFile(file.path) : null);
+        if (!buffer) {
+            return {
+                status: 400,
+                body: { success: false, message: "Gagal membaca file foto" },
+            };
+        }
+
+        const filename = file.filename || `${id}-${Date.now()}.jpg`;
+        const s3Key = `images/visits/${filename}`;
+
+        const { url: fotoUrl } = await uploadToS3({
+            buffer,
+            key: s3Key,
+            contentType: file.mimetype || "image/jpeg",
+        });
+
+        await db.query(`UPDATE tkunjungan SET foto = ? WHERE id = ?`, [
+            fotoUrl,
+            id,
+        ]);
+
+        return {
+            status: 200,
+            body: {
+                success: true,
+                message: "Foto berhasil disimpan ke S3 dan database",
+                data: {
+                    id: Number(id),
+                    filename,
+                    foto: fotoUrl,
+                    foto_url: fotoUrl,
+                },
+            },
+        };
+    } finally {
+        if (file.path) {
+            await fs.promises.unlink(file.path).catch(() => {});
+        }
     }
-
-    const relativePath = `/uploads/visits/${file.filename}`;
-    await db.query(`UPDATE tkunjungan SET foto = ? WHERE id = ?`, [
-        relativePath,
-        id,
-    ]);
-
-    return {
-        status: 200,
-        body: {
-            success: true,
-            message: "Foto berhasil disimpan ke server dan database",
-            data: { id: Number(id), filename: file.filename },
-        },
-    };
 };
 
 const getRekapVisit = async ({ user, start, end, cabang, publicBaseUrl }) => {
