@@ -1,9 +1,18 @@
 const homeService = require("../services/homeService");
 
 function getPublicBaseUrl(req) {
-    const proto = req.headers["x-forwarded-proto"] || req.protocol;
-    const host = req.headers["x-forwarded-host"] || req.get("host");
-    return `${proto}://${host}`;
+    const envBase = String(
+        process.env.PUBLIC_BASE_URL ||
+            process.env.API_PUBLIC_ORIGIN ||
+            process.env.PUBLIC_IMAGE_ORIGIN ||
+            "",
+    ).trim();
+    if (envBase) {
+        return envBase.replace(/\/+$/, "");
+    }
+    const proto = req.headers["x-forwarded-proto"] || req.protocol || "http";
+    const host = req.headers["x-forwarded-host"] || req.get("host") || "";
+    return host ? `${proto}://${host}` : "";
 }
 
 const calonCustomer = async (req, res) => {

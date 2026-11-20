@@ -13,8 +13,19 @@ app.set("trust proxy", true);
 
 app.use(cors());
 
+// Static /uploads route (foto visit, dll)
 app.use(
     "/uploads",
+    express.static(path.join(__dirname, "uploads"), {
+        setHeaders: (res) => {
+            res.set("Access-Control-Allow-Origin", "*");
+            res.set("Cross-Origin-Resource-Policy", "cross-origin");
+        },
+    }),
+);
+
+app.use(
+    "/api/uploads",
     express.static(path.join(__dirname, "uploads"), {
         setHeaders: (res) => {
             res.set("Access-Control-Allow-Origin", "*");
